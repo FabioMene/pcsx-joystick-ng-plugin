@@ -1,0 +1,5 @@
+Plugin per PCSX/PCSXR per poter usare joystick-ng
+
+Dipendenze:
+    joystick-ng
+    libx11-dev

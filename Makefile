@@ -1,8 +1,7 @@
-
 all:
-	gcc -Wall -fPIC -c psemu-joystick-ng-plugin.c -o psemu-joystick-ng-plugin.o
+	gcc -Wall -fPIC -c pcsx-joystick-ng-plugin.c -o pcsx-joystick-ng-plugin.o
 	gcc -Wall -fPIC -c config.c -o config.o
-	gcc -fPIC -shared psemu-joystick-ng-plugin.o config.o -o libjoystick-ng-plugin.so -lc -lpthread
+	gcc -fPIC -shared pcsx-joystick-ng-plugin.o config.o -o libjoystick-ng-plugin.so -lc -lpthread
 
 install:
 	[ -d ~/.pcsx  ] && cp libjoystick-ng-plugin.so ~/.pcsx/plugins  || true
@@ -13,3 +12,4 @@ clean:
 
 uninstall:
 	rm -f ~/.pcsx/plugins/libjoystick-ng-plugin.so
+	rm -f ~/.pcsxr/plugins/libjoystick-ng-plugin.so

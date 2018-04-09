@@ -1,7 +1,7 @@
 /*
- * psemu-joystick-ng-plugin.c
+ * pcsx-joystick-ng-plugin.c
  *
- * Copyright 2016-2017 Fabio Meneghetti <fabiomene97@gmail.com>
+ * Copyright 2016-2018 Fabio Meneghetti <fabiomene97@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
  *
  */
 
-// Questo è un plugin per emulatori ps1 compatibili con PSEmu
+// Questo è un plugin per emulatori ps1 compatibili con PSEmu (nella fattispecie PCSX/R)
 
 #include <stdio.h>
 #include <stdlib.h>
