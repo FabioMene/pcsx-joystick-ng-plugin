@@ -37,7 +37,6 @@ jngp_pad_t jngp_pads[2];
 // slot2 mode2 keys2 axis2
 
 void jngp_load_config(){
-    printf("tipo -1\n");
     fflush(stdout);
     
     FILE* fp = fopen(CONFIG_FILE, "r");

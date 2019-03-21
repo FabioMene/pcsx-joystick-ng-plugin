@@ -39,13 +39,17 @@
 #include "config.h"
 #include "psemu_plugin_defs.h"
 
+const uint8_t v_version  = 1; // PSEmu 1.x
+const uint8_t v_revision = 1;
+const uint8_t v_build    = 0;
+
 // Riconoscimento plugin
 uint32_t PSEgetLibType(void) {
     return PSE_LT_PAD;
 }
 
 uint32_t PSEgetLibVersion(void) {
-    return 0x010000;
+    return v_version << 16 | v_revision << 8 | v_build;
 }
 
 char* PSEgetLibName(void) {
@@ -138,7 +142,7 @@ static volatile int update_thread_run = 1;
 static Display* xdisplay;
 static Window   xwindow;
 static Atom     xwmprotocols;
-static Atom     xwmdelwindow; 
+static Atom     xwmdelwindow;
 static long     xlastkey = 0;
 
 long PADopen(unsigned long* display){
@@ -153,9 +157,8 @@ long PADopen(unsigned long* display){
     jngp_pads[0].fd = open("/dev/jng/device", O_RDWR);
     if(jngp_pads[0].fd < 0) return PSE_PAD_ERR_FAILURE;
     ioctl(jngp_pads[0].fd, JNGIOCSETSLOT, jngp_pads[0].slot);
-    ioctl(jngp_pads[0].fd, JNGIOCSETMODE, JNG_RMODE_NORMAL | JNG_WMODE_EVENT);
+    ioctl(jngp_pads[0].fd, JNGIOCSETMODE, JNG_RMODE_BLOCK | JNG_WMODE_EVENT);
     joystick_arr[0].mode = jngp_pads[0].type;
-    jngp_set_mode_led(0);
     
     jngp_pads[1].fd = open("/dev/jng/device", O_RDWR);
     if(jngp_pads[1].fd < 0){
@@ -163,9 +166,8 @@ long PADopen(unsigned long* display){
         return PSE_PAD_ERR_FAILURE;
     }
     ioctl(jngp_pads[1].fd, JNGIOCSETSLOT, jngp_pads[1].slot);
-    ioctl(jngp_pads[1].fd, JNGIOCSETMODE, JNG_RMODE_NORMAL | JNG_WMODE_EVENT);
+    ioctl(jngp_pads[1].fd, JNGIOCSETMODE, JNG_RMODE_BLOCK | JNG_WMODE_EVENT);
     joystick_arr[1].mode = jngp_pads[1].type;
-    jngp_set_mode_led(1);
     
     // Inizializzazione tastiera
     
@@ -194,14 +196,14 @@ long PADclose(void){
     pthread_join(update_thread, NULL);
     close(jngp_pads[0].fd);
     close(jngp_pads[1].fd);
-	XkbSetDetectableAutoRepeat(xdisplay, 0, NULL);
+    XkbSetDetectableAutoRepeat(xdisplay, 0, NULL);
     return 0;
 }
 
 unsigned char PADstartPoll(int pad){ // Linea ATT attivata, reset comando
-	curr_pad = pad - 1;
-	bi       = 0;
-	return 0xff;
+    curr_pad = pad - 1;
+    bi       = 0;
+    return 0xff;
 }
 
 unsigned char PADpoll(unsigned char value){
@@ -239,14 +241,14 @@ unsigned char PADpoll(unsigned char value){
                 write(jngp_pads[curr_pad].fd, &fb_event, sizeof(jng_event_t));
             }
             break;
-        
-        case PS_CMD_CONFIG_MODE: 
+
+        case PS_CMD_CONFIG_MODE:
             // I dati vanno inviati solo se non si è già in mod config
             if(joystick.inconf == 0) send = joystick.data[ovi];
             else                     send = 0x00;
             // Vediamo se entrare in mod config. I cambiamenti vengono fatti dopo byte inviato
-            if     (ivi == 0)      tmp = cmdb;
-            else if(ovi == cb - 2) joystick.inconf = (tmp)?1:0;
+            if(ivi == 0)     tmp = cmdb;
+            else if(ovi < 2) joystick.inconf = (tmp)?1:0;
             break;
 
         case PS_CMD_QUERY_MODEL:
@@ -332,13 +334,14 @@ unsigned char PADpoll(unsigned char value){
         } else if(joystick.mode == PS_MODE_DIGITAL){
             send = 0x41; // 0x04 (digitale),   2 byte
         } else if(joystick.mode == PS_MODE_ANALOG){
-            send = 0x53; // 0x05 (analogico), 6 byte
+            send = 0x73; // 0x07 (analogico), 6 byte
         }
     } else { // bi = 1
         if(joystick.mode_changed) send = 0x00;
         else                      send = 0x5a;
         joystick.mode_changed = 0;
     }
+
     bi++;
     return send;
 }
@@ -354,22 +357,20 @@ static inline void jngp_pad_read(int pn, PadDataS* pad){
 
 long PADreadPort1(PadDataS *pad){
     jngp_pad_read(0, pad);
-	return 0;
+    return 0;
 }
 
 long PADreadPort2(PadDataS *pad){
     jngp_pad_read(1, pad);
-	return 0;
+    return 0;
 }
 
 long PADkeypressed(void){
-    static int frame = 1;
-    
     // Aggiornamento X
     
     XEvent event;
     XClientMessageEvent* cmevent;
-    if(frame) while(XPending(xdisplay)){ // Controlla gli eventi X11 solo ogni due frame
+    while(XPending(xdisplay)){
         XNextEvent(xdisplay, &event);
         switch(event.type){
             case KeyPress:
@@ -386,23 +387,37 @@ long PADkeypressed(void){
                 break;
         }
     }
-    frame ^= 1;
-    
+
     long key = xlastkey;
     xlastkey = 0;
-	return key;
+    return key;
 }
 
 void* jngp_update_thread(void* unused){
     int i;
-    jng_state_t state;
+    jng_state_ex_t state_ex;
+
+    // Serve a tenere traccia di state_ex.control.last_info_inc per aggiornare
+    // i led di modalità per i due pad
+    int update_inc[] = {-1, -1};
+
     while(update_thread_run){
         // Aggiornamento jng
         
         for(i = 0;i < 2;i++){
-            read(jngp_pads[i].fd, &state, sizeof(jng_state_t));
-            
-            int akstate = state.keys & jngp_pads[i].keys[PS_KEY_ANALOG];
+            read(jngp_pads[i].fd, &state_ex, sizeof(jng_state_ex_t));
+
+            // Controlla se il joystick è cambiato dall'ultimo controllo
+            if(state_ex.control.last_info_inc != update_inc[i]){
+
+                // Aggiorna
+                update_inc[i] = state_ex.control.last_info_inc;
+
+                // Invia i dati led solo se il joystick è connesso
+                if(state_ex.control.connected) jngp_set_mode_led(i);
+            }
+
+            int akstate = state_ex.state.keys & jngp_pads[i].keys[PS_KEY_ANALOG];
             
             if(akstate == 0 && joystick_arr[i].aklast != 0){
                 if(joystick_arr[i].mode == PS_MODE_DIGITAL) joystick_arr[i].mode = PS_MODE_ANALOG;
@@ -415,7 +430,7 @@ void* jngp_update_thread(void* unused){
             
             // Genera i dati del joystick
             // (b0: dal meno significativo SEL, L3, R3, START, U, R, D, L; b1: L2, R2, L1, R1, T, C, X, Q)
-            #define jngp_js_k_bit(psbit, off) ((state.keys & jngp_pads[i].keys[(psbit)])?(0):(1 << (off)))
+            #define jngp_js_k_bit(psbit, off) ((state_ex.state.keys & jngp_pads[i].keys[(psbit)])?(0):(1 << (off)))
             joystick_arr[i].data[0] = jngp_js_k_bit(PS_KEY_SELECT,   0)
                                     | jngp_js_k_bit(PS_KEY_L3,       1)
                                     | jngp_js_k_bit(PS_KEY_R3,       2)
@@ -424,28 +439,17 @@ void* jngp_update_thread(void* unused){
                                     | jngp_js_k_bit(PS_KEY_RIGHT,    5)
                                     | jngp_js_k_bit(PS_KEY_DOWN,     6)
                                     | jngp_js_k_bit(PS_KEY_LEFT,     7);
-            if(joystick_arr[i].mode == PS_MODE_ANALOG){
-                joystick_arr[i].data[1] = jngp_js_k_bit(PS_KEY_L2,       0)
-                                        | jngp_js_k_bit(PS_KEY_R2,       1)
-                                        | jngp_js_k_bit(PS_KEY_SQUARE,   2)
-                                        | jngp_js_k_bit(PS_KEY_TRIANGLE, 3)
-                                        | jngp_js_k_bit(PS_KEY_R1,       4)
-                                        | jngp_js_k_bit(PS_KEY_CIRCLE,   5)
-                                        | jngp_js_k_bit(PS_KEY_CROSS,    6)
-                                        | jngp_js_k_bit(PS_KEY_L1,       7);
-            } else {
-                joystick_arr[i].data[1] = jngp_js_k_bit(PS_KEY_L2,       0)
-                                        | jngp_js_k_bit(PS_KEY_R2,       1)
-                                        | jngp_js_k_bit(PS_KEY_L1,       2)
-                                        | jngp_js_k_bit(PS_KEY_R1,       3)
-                                        | jngp_js_k_bit(PS_KEY_TRIANGLE, 4)
-                                        | jngp_js_k_bit(PS_KEY_CIRCLE,   5)
-                                        | jngp_js_k_bit(PS_KEY_CROSS,    6)
-                                        | jngp_js_k_bit(PS_KEY_SQUARE,   7);
-            }
+            joystick_arr[i].data[1] = jngp_js_k_bit(PS_KEY_L2,       0)
+                                    | jngp_js_k_bit(PS_KEY_R2,       1)
+                                    | jngp_js_k_bit(PS_KEY_L1,       2)
+                                    | jngp_js_k_bit(PS_KEY_R1,       3)
+                                    | jngp_js_k_bit(PS_KEY_TRIANGLE, 4)
+                                    | jngp_js_k_bit(PS_KEY_CIRCLE,   5)
+                                    | jngp_js_k_bit(PS_KEY_CROSS,    6)
+                                    | jngp_js_k_bit(PS_KEY_SQUARE,   7);
             #undef jngp_js_k_bit
             // levette (RX, RY, LX, LY)
-            #define jngp_js_a_byte(psbit, boff) joystick_arr[i].data[2 + (boff)] = (JNG_AXIS(state, jngp_pads[i].axis[(psbit)]) >> 8) - 128;
+            #define jngp_js_a_byte(psbit, boff) joystick_arr[i].data[2 + (boff)] = (JNG_AXIS(state_ex.state, jngp_pads[i].axis[(psbit)]) >> 8) - 128;
             jngp_js_a_byte(PS_AXIS_RX, 0);
             jngp_js_a_byte(PS_AXIS_RY, 1);
             jngp_js_a_byte(PS_AXIS_LX, 2);

@@ -66,7 +66,7 @@ enum {
 };
 
 #define PS_MODE_DIGITAL 0x04
-#define PS_MODE_ANALOG  0x05
+#define PS_MODE_ANALOG  0x07
 
 #define CONFIG_FILE "jngp.conf"
 
