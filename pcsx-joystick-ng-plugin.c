@@ -231,11 +231,11 @@ unsigned char PADpoll(unsigned char value){
         case PS_CMD_READ:
             // Nessun controllo, in mod digitale potrebbe inviare anche falsi dati di joystick (in teoria la ps non li considera)
             send = joystick.data[ovi];
-            if(ivi == 1){
+            if(ivi == 0){
                 fb_event.what  = JNG_FB_FORCE_SMALLMOTOR;
                 fb_event.value = (cmdb)?65535:0;
                 write(jngp_pads[curr_pad].fd, &fb_event, sizeof(jng_event_t));
-            } else if(ivi == 0){
+            } else if(ivi == 1){
                 fb_event.what  = JNG_FB_FORCE_BIGMOTOR;
                 fb_event.value = cmdb << 8;
                 write(jngp_pads[curr_pad].fd, &fb_event, sizeof(jng_event_t));
@@ -429,8 +429,10 @@ void* jngp_update_thread(void* unused){
             joystick_arr[i].aklast = akstate;
             
             // Genera i dati del joystick
-            // (b0: dal meno significativo SEL, L3, R3, START, U, R, D, L; b1: L2, R2, L1, R1, T, C, X, Q)
             #define jngp_js_k_bit(psbit, off) ((state_ex.state.keys & jngp_pads[i].keys[(psbit)])?(0):(1 << (off)))
+            #define jngp_js_a_byte(psbit, boff) joystick_arr[i].data[2 + (boff)] = (JNG_AXIS(state_ex.state, jngp_pads[i].axis[(psbit)]) >> 8) - 128;
+
+            // (b0: dal meno significativo SEL, L3, R3, START, U, R, D, L; b1: L2, R2, L1, R1, T, C, X, Q)
             joystick_arr[i].data[0] = jngp_js_k_bit(PS_KEY_SELECT,   0)
                                     | jngp_js_k_bit(PS_KEY_L3,       1)
                                     | jngp_js_k_bit(PS_KEY_R3,       2)
@@ -447,14 +449,39 @@ void* jngp_update_thread(void* unused){
                                     | jngp_js_k_bit(PS_KEY_CIRCLE,   5)
                                     | jngp_js_k_bit(PS_KEY_CROSS,    6)
                                     | jngp_js_k_bit(PS_KEY_SQUARE,   7);
-            #undef jngp_js_k_bit
-            // levette (RX, RY, LX, LY)
-            #define jngp_js_a_byte(psbit, boff) joystick_arr[i].data[2 + (boff)] = (JNG_AXIS(state_ex.state, jngp_pads[i].axis[(psbit)]) >> 8) - 128;
-            jngp_js_a_byte(PS_AXIS_RX, 0);
-            jngp_js_a_byte(PS_AXIS_RY, 1);
-            jngp_js_a_byte(PS_AXIS_LX, 2);
-            jngp_js_a_byte(PS_AXIS_LY, 3);
+
+            if(joystick_arr[i].mode == PS_MODE_ANALOG){
+                // levette (RX, RY, LX, LY)
+                jngp_js_a_byte(PS_AXIS_RX, 0);
+                jngp_js_a_byte(PS_AXIS_RY, 1);
+                jngp_js_a_byte(PS_AXIS_LX, 2);
+                jngp_js_a_byte(PS_AXIS_LY, 3);
+
+            } else {
+                // In mod. digitale la levetta sx simula la pressione del dpad
+                register unsigned char add_bits = 0xff;
+
+                // asse x
+                register short val = JNG_AXIS(state_ex.state, jngp_pads[i].axis[PS_AXIS_LX]);
+                if(val > 16383)
+                    add_bits &= ~(1 << 5);
+
+                else if(val < -16384)
+                    add_bits &= ~(1 << 7);
+
+                // asse y
+                val = JNG_AXIS(state_ex.state, jngp_pads[i].axis[PS_AXIS_LY]);
+                if(val > 16383)
+                    add_bits &= ~(1 << 6);
+
+                else if(val < -16384)
+                    add_bits &= ~(1 << 4);
+
+                joystick_arr[i].data[0] &= add_bits;
+            }
+
             #undef jngp_js_a_byte
+            #undef jngp_js_k_bit
         }
         usleep(5000);
     }

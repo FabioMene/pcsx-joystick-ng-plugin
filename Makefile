@@ -1,7 +1,7 @@
 all:
-	gcc -Wall -fPIC -c pcsx-joystick-ng-plugin.c -o pcsx-joystick-ng-plugin.o
-	gcc -Wall -fPIC -c config.c -o config.o
-	gcc -fPIC -shared pcsx-joystick-ng-plugin.o config.o -o libjoystick-ng-plugin.so -lc -lpthread
+	gcc -g3 -O2 -Wall -fPIC -c pcsx-joystick-ng-plugin.c -o pcsx-joystick-ng-plugin.o
+	gcc -g3 -O2 -Wall -fPIC -c config.c -o config.o
+	gcc -g3 -O2 -fPIC -shared pcsx-joystick-ng-plugin.o config.o -o libjoystick-ng-plugin.so -lc -lpthread
 
 install:
 	[ -d ~/.pcsx  ] && cp libjoystick-ng-plugin.so ~/.pcsx/plugins  || true

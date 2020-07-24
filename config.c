@@ -73,7 +73,7 @@ void jngp_load_config(){
     if(fp) fclose(fp);
     // Pad1
     jngp_pads[0].slot = 0;
-    jngp_pads[0].type = PS_MODE_ANALOG;
+    jngp_pads[0].type = PS_MODE_DIGITAL;
     
     jngp_pads[0].keys[PS_KEY_SELECT]   = JNG_KEY_SELECT;
     jngp_pads[0].keys[PS_KEY_L3]       = JNG_KEY_L3;
@@ -103,7 +103,7 @@ void jngp_load_config(){
     
     // Pad2
     jngp_pads[1].slot = 1;
-    jngp_pads[1].type = PS_MODE_ANALOG;
+    jngp_pads[1].type = PS_MODE_DIGITAL;
     
     jngp_pads[1].keys[PS_KEY_SELECT]   = JNG_KEY_SELECT;
     jngp_pads[1].keys[PS_KEY_L3]       = JNG_KEY_L3;
